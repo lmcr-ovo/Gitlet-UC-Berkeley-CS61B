@@ -33,7 +33,7 @@ public class Repository {
 
     /** Repository state objects: branches, current commit, and stage. */
     private static Branches branches = loadBranches();
-    private static Commit currCommit = readCommit(branches.getHEADId());
+    private static Commit currCommit = readCommit(branches.getHeadId());
     private static Stage stage = loadStage();
 
     /** Verify that current directory contains a Gitlet system. */
@@ -136,7 +136,7 @@ public class Repository {
             System.out.println("A branch with that name already exists.");
             return;
         }
-        branches.put(branchName, branches.getHEADId());
+        branches.put(branchName, branches.getHeadId());
     }
 
     /** Delete an existing branch reference. */
@@ -177,7 +177,7 @@ public class Repository {
         }
         stage.update(targetCommit);
         branches.put(branches.getCurrBranchName(), targetCommitId);
-        branches.setHEADId(targetCommitId);
+        branches.setHeadId(targetCommitId);
     }
 
     /** Checkout a single file from current commit. */
@@ -322,6 +322,7 @@ public class Repository {
      * Merge the specified branch into the current branch.
      * Handles all cases: fast‑forward, conflict, modification, and untracked check.
      */
+    /*
     public static void merge(String branchName) {
         if (branches.getCurrBranchName().equals(branchName)) {
             System.out.println("Cannot merge a branch with itself.");
@@ -470,6 +471,7 @@ public class Repository {
             System.out.println("Encountered a merge conflict.");
         }
     }
+    */
 
     /** Read an object (Commit or Blob) by id and print its content. */
     public static void readObj(String id) {
@@ -486,4 +488,321 @@ public class Repository {
     public static void readStage() {
         System.out.println(readObject(STAGE_FILE, Stage.class));
     }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    /**
+     * Merge the specified branch into the current branch.
+     * Handles all cases: fast-forward, conflict, modification, and untracked file checks.
+     */
+    public static void merge(String branchName) {
+
+        // === Step 1. Check preconditions ===
+        if (!checkMergePreconditions(branchName)) {
+            return;
+        }
+
+        // Load current, target, and split commit ids
+        String currId = branches.getHeadId();
+        String targetId = branches.getTipCommitId(branchName);
+        String splitId = getSplitCommitId(currId, targetId, branchName);
+        if (splitId == null) {
+            return; // Already handled (fast-forward or ancestor)
+        }
+
+        // Load the corresponding commit objects
+        Commit split = readCommit(splitId);
+        Commit curr = currCommit;
+        Commit target = branches.getTipCommit(branchName);
+
+        // === Step 2. Check for untracked file conflicts ===
+        if (!checkUntrackedConflicts(curr, target)) {
+            return;
+        }
+
+        // === Step 3. Merge logic ===
+        // Collect all candidate file names across three commits
+        Set<String> allFiles = collectAllFiles(split, curr, target);
+        boolean hasConflict = false;
+        boolean hasChange = false;
+
+        // Iterate each file and process merging logic
+        for (String fileName : allFiles) {
+            MergeResult r = mergeSingleFile(fileName, split, curr, target);
+            if (r.hasConflict) {
+                hasConflict = true;
+            }
+            if (r.hasChange) {
+                hasChange = true;
+            }
+            if (r.mergedBlob != null) {
+                // Place merged version into staging area
+                stage.put(fileName, r.mergedBlob.getId());
+            } else if (r.shouldDelete) {
+                // Delete file if necessary
+                deleteFile(join(CWD, fileName));
+                stage.remove(fileName);
+            }
+        }
+
+        if (!hasChange) {
+            System.out.println("No changes to merge.");
+            return;
+        }
+
+        // === Step 4. Finalize merge ===
+        finalizeMerge(branchName, hasConflict);
+    }
+
+    /**
+     * Checks preconditions for merging, including:
+     * 1. Merging with self (not allowed)
+     * 2. Existence of target branch
+     * 3. Uncommitted changes in current branch
+     */
+    private static boolean checkMergePreconditions(String branchName) {
+        if (branches.getCurrBranchName().equals(branchName)) {
+            System.out.println("Cannot merge a branch with itself.");
+            return false;
+        }
+        if (!branches.containsBranch(branchName)) {
+            System.out.println("A branch with that name does not exist.");
+            return false;
+        }
+        if (hasUncommittedChanges(currCommit, stage)) {
+            System.out.println("You have uncommitted changes.");
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Finds the split commit id between current and target branch.
+     * Also handles special ancestor and fast-forward cases.
+     */
+    private static String getSplitCommitId(String currId, String targetId, String branchName) {
+        String splitId = splitCommitId(currId, targetId);
+        Commit split = readCommit(splitId);
+        Commit curr = readCommit(currId);
+        Commit target = readCommit(targetId);
+
+        // If target branch is ancestor of current
+        if (equalsCommit(split, target)) {
+            System.out.println("Given branch is an ancestor of the current branch.");
+            return null;
+        }
+        // If current branch is ancestor of target -> fast-forward
+        if (equalsCommit(split, curr)) {
+            System.out.println("Current branch fast-forwarded.");
+            checkoutBranch(branchName);
+            return null;
+        }
+        return splitId;
+    }
+
+    /**
+     * Checks whether there are untracked files in working directory
+     * that would be overwritten by files from the target commit.
+     */
+    private static boolean checkUntrackedConflicts(Commit curr, Commit target) {
+        for (String fileName : plainFilenamesIn(CWD)) {
+            if (!curr.containFileName(fileName) && target.containFileName(fileName)) {
+                System.out.println("There is an untracked file in the way; "
+                        + "delete it, or add and commit it first.");
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Collects all unique filenames that appear in any of
+     * the split, current, or target commits.
+     */
+    private static Set<String> collectAllFiles(Commit split, Commit curr, Commit target) {
+        Set<String> files = new HashSet<>();
+        files.addAll(split.getFileNameSet());
+        files.addAll(curr.getFileNameSet());
+        files.addAll(target.getFileNameSet());
+        return files;
+    }
+
+    /**
+     * Handles merge logic for a single file based on comparison
+     * between split, current, and target commits.
+     * Returns a MergeResult describing necessary actions.
+     */
+    private static MergeResult mergeSingleFile(String fileName, Commit split, Commit curr, Commit target) {
+        Blob splitBlob = readBlob(split.getBlobId(fileName));
+        Blob currBlob = readBlob(curr.getBlobId(fileName));
+        Blob targetBlob = readBlob(target.getBlobId(fileName));
+
+        // Equality comparisons between file states
+        boolean eqCurrSplit = equalsBlob(currBlob, splitBlob);
+        boolean eqTarSplit = equalsBlob(targetBlob, splitBlob);
+        boolean eqCurrTar  = equalsBlob(currBlob, targetBlob);
+
+        MergeResult result = new MergeResult(fileName);
+
+        // Case 1: Modified only in target branch
+        if (eqCurrSplit && !eqTarSplit && targetBlob != null) {
+            targetBlob.recover();
+            result.setChange(targetBlob);
+            return result;
+        }
+
+        // Case 2: Modified only in current branch
+        if (!eqCurrSplit && eqTarSplit && currBlob != null) {
+            result.setChange(currBlob);
+            return result;
+        }
+
+        // Case 3: Modified in both but identical content
+        if (!eqCurrSplit && !eqTarSplit && eqCurrTar && currBlob != null) {
+            result.setChange(currBlob);
+            return result;
+        }
+
+        // Case 4: Added only in current branch
+        if (splitBlob == null && currBlob != null && targetBlob == null) {
+            result.setChange(currBlob);
+            return result;
+        }
+
+        // Case 5: Added only in target branch
+        if (splitBlob == null && currBlob == null && targetBlob != null) {
+            targetBlob.recover();
+            result.setChange(targetBlob);
+            return result;
+        }
+
+        // Case 6: Deleted only in target branch
+        if (splitBlob != null && eqCurrSplit && targetBlob == null) {
+            result.markDelete();
+            return result;
+        }
+
+        // Case 7: Deleted only in current branch
+        if (splitBlob != null && eqTarSplit && currBlob == null) {
+            result.markDelete();
+            return result;
+        }
+
+        // Case 8: Conflict - both changed differently
+        if (!eqCurrTar) {
+            String currContent   = currBlob != null ? currBlob.getContentAsString() : "";
+            String targetContent = targetBlob != null ? targetBlob.getContentAsString() : "";
+
+            // Construct conflict markers according to Git style
+            String mergedText = "<<<<<<< HEAD\n"
+                    + currContent
+                    + "=======\n"
+                    + targetContent
+                    + ">>>>>>>\n";
+
+            // Write conflict file and generate new blob
+            File outFile = join(CWD, fileName);
+            writeContents(outFile, mergedText);
+            Blob mergedBlob = creBlob(outFile);
+            result.setConflict(mergedBlob);
+            return result;
+        }
+
+        return result; // Default: no change
+    }
+
+    /**
+     * Creates a final merge commit including both parents,
+     * updates branch pointers and stage area.
+     */
+    private static void finalizeMerge(String branchName, boolean hasConflict) {
+        // Parent commits: current and target branch tips
+        List<String> parents = Arrays.asList(currCommit.getId(),
+                branches.getTipCommitId(branchName));
+        // Standard merge commit message
+        String msg = "Merged " + branchName + " into " + branches.getCurrBranchName() + ".";
+        Commit mergeCommit = new Commit(msg, stage.getBlobIdMap(), parents);
+
+        // Update branch head pointers and stage contents
+        branches.setHeadId(mergeCommit.getId());
+        branches.put(branches.getCurrBranchName(), mergeCommit.getId());
+        stage.update(mergeCommit);
+
+        if (hasConflict) {
+            System.out.println("Encountered a merge conflict.");
+        }
+    }
+
+    /**
+     * Helper class that encapsulates the result of a single file merge.
+     * Contains indicators for change, conflict, and deletion.
+     */
+    private static class MergeResult {
+        String fileName;
+        Blob mergedBlob;
+        boolean hasChange = false;
+        boolean hasConflict = false;
+        boolean shouldDelete = false;
+
+        MergeResult(String name) {
+            this.fileName = name;
+        }
+
+        /** Marks file as changed and stores merged blob reference. */
+        void setChange(Blob blob) {
+            this.mergedBlob = blob;
+            this.hasChange = true;
+        }
+
+        /** Marks file as conflicted and stores resulting blob. */
+        void setConflict(Blob blob) {
+            this.mergedBlob = blob;
+            this.hasChange = true;
+            this.hasConflict = true;
+        }
+
+        /** Marks file for deletion in working directory and stage. */
+        void markDelete() {
+            this.shouldDelete = true;
+            this.hasChange = true;
+        }
+    }
+
+
 }

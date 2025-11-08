@@ -23,7 +23,7 @@ public class Branches implements Serializable {
     /** Name of the currently active branch. */
     private String currBranch;
     /** The current HEAD commit id. */
-    private String HEAD;
+    private String head;
 
     /**
      * Construct a new Branches object with a given current branch name.
@@ -41,19 +41,19 @@ public class Branches implements Serializable {
     public static Branches creBranches(String currBranch, String headId) {
         Branches branches = new Branches(currBranch);
         branches.put(currBranch, headId);
-        branches.setHEADId(headId);
+        branches.setHeadId(headId);
         branches.save();
         return branches;
     }
 
     /** Get the current HEAD commit id. */
-    public String getHEADId() {
-        return HEAD;
+    public String getHeadId() {
+        return head;
     }
 
     /** Set HEAD commit id and persist the update. */
-    public void setHEADId(String headId) {
-        this.HEAD = headId;
+    public void setHeadId(String headId) {
+        this.head = headId;
         save();
     }
 
@@ -78,7 +78,7 @@ public class Branches implements Serializable {
      */
     public void switchBranch(String branchName) {
         setCurrBranchName(branchName);
-        setHEADId(getTipCommitId(branchName));
+        setHeadId(getTipCommitId(branchName));
         save();
     }
 
@@ -143,7 +143,7 @@ public class Branches implements Serializable {
         }
 
         // Create child commit from current HEAD
-        Commit currCommit = readCommit(HEAD);
+        Commit currCommit = readCommit(head);
         Commit childCommit = currCommit.creChildCommit(message, stage);
 
         if (childCommit == null) {
@@ -153,7 +153,7 @@ public class Branches implements Serializable {
 
         // Update branch tip and HEAD to new commit
         branches.put(currBranch, childCommit.getId());
-        setHEADId(childCommit.getId());
+        setHeadId(childCommit.getId());
         //stage.clear();
         save();
     }
