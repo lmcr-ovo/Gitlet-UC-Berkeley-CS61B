@@ -37,7 +37,7 @@ public class Commit implements Serializable {
         this.currentTime = new Date();
         this.timeStamp = dateToTimeStamp(currentTime);
         this.id = generateID();
-        //saveCommit();  // deferred saving
+        saveCommit();  // deferred saving
     }
 
     /** Construct the initial commit object (the first commit). */
@@ -156,7 +156,7 @@ public class Commit implements Serializable {
             tmpBlobIdMap.put(fileName, stage.getBlobId(fileName));
         }
         Commit childCommit = new Commit(commitMessage, tmpBlobIdMap, commitParents);
-        childCommit.saveCommit();
+        //childCommit.saveCommit();
         return childCommit;
     }
 

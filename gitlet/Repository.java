@@ -461,7 +461,7 @@ public class Repository {
                 "Merged " + branchName + " into " + branches.getCurrBranchName() + ".";
         Commit mergeCommit =
                 new Commit(mergeCommitMessage, stage.getBlobIdMap(), parents);
-        mergeCommit.saveCommit();
+        //mergeCommit.saveCommit();
         branches.setHEADId(mergeCommit.getId());
         branches.put(branches.getCurrBranchName(), mergeCommit.getId());
         stage.update(mergeCommit);
