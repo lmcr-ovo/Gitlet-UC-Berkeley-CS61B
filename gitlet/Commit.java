@@ -19,7 +19,7 @@ public class Commit implements Serializable {
     /** The message associated with this commit (description of the changes). */
     private String message;
     /** Mapping of file name -> Blob id (file snapshot identifiers). */
-    private Map<String, String> blobIdMap = new TreeMap<>();
+    private Map<String, String> blobIdMap = new HashMap<>();
     /** List of parent commit ids (normally one, two for merge commits). */
     private List<String> parents;
     /** Date object recording when this commit was created. */
@@ -45,7 +45,7 @@ public class Commit implements Serializable {
         this.currentTime = new Date(0);                    // epoch time
         this.timeStamp = dateToTimeStamp(this.currentTime);
         this.message = "initial commit";
-        this.blobIdMap = new TreeMap<>();
+        this.blobIdMap = new HashMap<>();
         this.parents = new LinkedList<>();
         this.id = generateID();
         //saveCommit();
@@ -151,7 +151,7 @@ public class Commit implements Serializable {
         }
         List<String> commitParents = new LinkedList<>();
         commitParents.add(id);
-        Map<String, String> tmpBlobIdMap = new TreeMap<>();
+        Map<String, String> tmpBlobIdMap = new HashMap<>();
         for (String fileName : stage.getFileNameSet()) {
             tmpBlobIdMap.put(fileName, stage.getBlobId(fileName));
         }

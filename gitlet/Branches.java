@@ -1,9 +1,9 @@
 package gitlet;
 
 import java.io.Serializable;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 
 import static gitlet.Utils.*;
 import static gitlet.Repository.*;
@@ -30,7 +30,7 @@ public class Branches implements Serializable {
      * Initially creates an empty branch map.
      */
     public Branches(String currBranch) {
-        branches = new TreeMap<>();
+        branches = new HashMap<>();
         this.currBranch = currBranch;
     }
 

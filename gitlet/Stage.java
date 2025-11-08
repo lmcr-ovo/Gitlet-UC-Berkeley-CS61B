@@ -4,7 +4,6 @@ import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 import static gitlet.Utils.*;
 import static gitlet.Blob.*;
 import static gitlet.Repository.*;
@@ -14,7 +13,7 @@ public class Stage implements Serializable {
     private Map<String, String> blobIdMap;
 
     public Stage() {
-        this.blobIdMap = new TreeMap<>();
+        this.blobIdMap = new HashMap<>();
     }
 
     public void put(String fileName, String blobId) {
