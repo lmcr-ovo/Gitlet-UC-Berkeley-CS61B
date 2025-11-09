@@ -47,7 +47,8 @@ public class Repository {
     /** Initialize a new Gitlet repository. */
     public static void init() {
         if (GITLET_DIR.exists()) {
-            System.out.println("A Gitlet version-control system already exists in the current directory.");
+            System.out.println("A Gitlet version-control system "
+                    + "already exists in the current directory.");
             return;
         }
         currCommit = creInitCommit();                        // create initial commit
@@ -163,12 +164,8 @@ public class Repository {
             return;
         }
         // check for untracked file blockage
-        for (String fileName : plainFilenamesIn(CWD)) {
-            if (!currCommit.containFileName(fileName)
-                    && targetCommit.containFileName(fileName)) {
-                System.out.println("There is an untracked file in the way; delete it, or add and commit it first.");
-                return;
-            }
+        if (!checkUntrackedConflicts(currCommit, targetCommit)) {
+            return;
         }
         // replace entire working directory with target snapshot
         deleteAllFiles(CWD);
@@ -213,12 +210,8 @@ public class Repository {
         }
         Commit targetCommit = branches.getTipCommit(branchName);
         // check untracked file conflicts
-        for (String fileName : plainFilenamesIn(CWD)) {
-            if (!currCommit.containFileName(fileName)
-                    && targetCommit.containFileName(fileName)) {
-                System.out.println("There is an untracked file in the way; delete it, or add and commit it first.");
-                return;
-            }
+        if (!checkUntrackedConflicts(currCommit, targetCommit)) {
+            return;
         }
         // replace working directory with target
         deleteAllFiles(CWD);
@@ -229,88 +222,7 @@ public class Repository {
         branches.switchBranch(branchName);
     }
 
-    /** Display repository status: branches, staged, removed, modified, untracked files. */
-    public static void status() {
-        Set<String> fileNameSet = new HashSet<>(stage.getFileNameSet());
-        List<String> cwdFiles = plainFilenamesIn(CWD);
-        if (cwdFiles != null) {
-            fileNameSet.addAll(cwdFiles);
-        }
-        fileNameSet.addAll(currCommit.getFileNameSet());
 
-        List<String> stagedFiles = new LinkedList<>();
-        List<String> removedFiles = new LinkedList<>();
-        List<String> mnsFiles = new LinkedList<>();        // modifications not staged
-        List<String> unTrackedFiles = new LinkedList<>();
-
-        // Collect status for each file
-        for (String fileName : fileNameSet) {
-            Blob stagedBlob = readBlob(stage.getBlobId(fileName));
-            Blob currBlob = readBlob(currCommit.getBlobId(fileName));
-            File cwdFile = join(CWD, fileName);
-            Blob cwdBlob = cwdFile.exists() ? new Blob(cwdFile) : null;
-
-            if (!equalsBlob(stagedBlob, currBlob)
-                    && equalsBlob(stagedBlob, cwdBlob) && cwdBlob != null) {
-                stagedFiles.add(fileName);
-            }
-            if (currCommit.containFileName(fileName)
-                    && !stage.containFileName(fileName)) {
-                removedFiles.add(fileName);
-            }
-            if (equalsBlob(stagedBlob, currBlob)
-                    && !equalsBlob(stagedBlob, cwdBlob)) {
-                if (currBlob != null && cwdBlob == null) {
-                    mnsFiles.add(fileName + " (deleted)");
-                } else if (stagedBlob != null && !equalsBlob(stagedBlob, cwdBlob)) {
-                    mnsFiles.add(fileName + " (modified)");
-                }
-            }
-            if (!currCommit.containFileName(fileName)
-                    && !stage.containFileName(fileName)) {
-                unTrackedFiles.add(fileName);
-            }
-        }
-
-        // Sort output lexicographically
-        stagedFiles.sort(String::compareTo);
-        removedFiles.sort(String::compareTo);
-        mnsFiles.sort(String::compareTo);
-        unTrackedFiles.sort(String::compareTo);
-
-        // Print each status section
-        System.out.println("=== Branches ===");
-        System.out.println("*" + branches.getCurrBranchName());
-        for (String branch : branches.getBranchNames()) {
-            if (!branch.equals(branches.getCurrBranchName())) {
-                System.out.println(branch);
-            }
-        }
-        System.out.println();
-
-        System.out.println("=== Staged Files ===");
-        for (String name : stagedFiles) {
-            System.out.println(name);
-        }
-        System.out.println();
-
-        System.out.println("=== Removed Files ===");
-        for (String name : removedFiles) {
-            System.out.println(name);
-        }
-        System.out.println();
-
-        System.out.println("=== Modifications Not Staged For Commit ===");
-        for (String name : mnsFiles) {
-            System.out.println(name);
-        }
-        System.out.println();
-
-        System.out.println("=== Untracked Files ===");
-        for (String name : unTrackedFiles) {
-            System.out.println(name);
-        }
-    }
 
     /** Display the split (common ancestor) commit between two commits. */
     public static void split(String id1, String id2) {
@@ -318,160 +230,7 @@ public class Repository {
         System.out.println(readCommit(splitCommitId));
     }
 
-    /**
-     * Merge the specified branch into the current branch.
-     * Handles all cases: fast‑forward, conflict, modification, and untracked check.
-     */
-    /*
-    public static void merge(String branchName) {
-        if (branches.getCurrBranchName().equals(branchName)) {
-            System.out.println("Cannot merge a branch with itself.");
-            return;
-        }
-        if (!branches.containsBranch(branchName)) {
-            System.out.println("A branch with that name does not exist.");
-            return;
-        }
-        if (hasUncommittedChanges(currCommit, stage)) {
-            System.out.println("You have uncommitted changes.");
-            return;
-        }
 
-        String splitCommitId = splitCommitId(branches.getHEADId(), branches.getTipCommitId(branchName));
-        Commit splitCommit = readCommit(splitCommitId);
-        Commit targetCommit = branches.getTipCommit(branchName);
-
-        Set<String> splitFiles = splitCommit.getFileNameSet();
-        Set<String> currFiles = currCommit.getFileNameSet();
-        Set<String> targetFiles = targetCommit.getFileNameSet();
-
-        // Ancestor/descendant shortcuts
-        if (equalsCommit(splitCommit, targetCommit)) {
-            System.out.println("Given branch is an ancestor of the current branch.");
-            return;
-        }
-        if (equalsCommit(splitCommit, currCommit)) {
-            System.out.println("Current branch fast-forwarded.");
-            checkoutBranch(branchName);
-            return;
-        }
-
-        // Gather all file names that appear in any of three commits
-        Set<String> files = new HashSet<>();
-        files.addAll(splitFiles);
-        files.addAll(currFiles);
-        files.addAll(targetFiles);
-
-        boolean hasConflict = false;
-        boolean hasChange = false;
-
-        // Detect untracked files that would be overwritten
-        for (String fileName : plainFilenamesIn(CWD)) {
-            if (!currCommit.containFileName(fileName)
-                    && targetCommit.containFileName(fileName)) {
-                System.out.println("There is an untracked file in the way; delete it, or add and commit it first.");
-                return;
-            }
-        }
-
-        // Merge logic per file
-        for (String fileName : files) {
-            Blob splitBlob = readBlob(splitCommit.getBlobId(fileName));
-            Blob currBlob = readBlob(currCommit.getBlobId(fileName));
-            Blob targetBlob = readBlob(targetCommit.getBlobId(fileName));
-
-            boolean isEqualCurrSplit = equalsBlob(currBlob, splitBlob);
-            boolean isEqualTarSplit = equalsBlob(targetBlob, splitBlob);
-            boolean isEqualCurrTar = equalsBlob(currBlob, targetBlob);
-
-            // 1. Modified only in target branch
-            if (isEqualCurrSplit && !isEqualTarSplit
-                    && targetBlob != null && splitBlob != null && currBlob != null) {
-                targetBlob.recover();
-                stage.put(fileName, targetBlob.getId());
-                hasChange = true;
-                continue;
-            }
-            // 2. Modified only in current branch
-            if (!isEqualCurrSplit && isEqualTarSplit
-                    && splitBlob != null && currBlob != null && targetBlob != null) {
-                stage.put(fileName, currBlob.getId());
-                continue;
-            }
-            // 3. Modified in both but to identical contents
-            if (!isEqualCurrSplit && !isEqualTarSplit && isEqualCurrTar
-                    && splitBlob != null && currBlob != null && targetBlob != null) {
-                stage.put(fileName, currBlob.getId());
-                continue;
-            }
-            // 4. Added only in current branch
-            if (splitBlob == null && currBlob != null && targetBlob == null) {
-                stage.put(fileName, currBlob.getId());
-                continue;
-            }
-            // 5. Added only in target branch
-            if (splitBlob == null && currBlob == null && targetBlob != null) {
-                targetBlob.recover();
-                hasChange = true;
-                stage.put(fileName, targetBlob.getId());
-                continue;
-            }
-            // 6. Deleted only in target branch
-            if (splitBlob != null && isEqualCurrSplit && targetBlob == null) {
-                deleteFile(join(CWD, fileName));
-                hasChange = true;
-                stage.remove(fileName);
-                continue;
-            }
-            // 7. Deleted only in current branch
-            if (splitBlob != null && isEqualTarSplit && currBlob == null) {
-                stage.remove(fileName);
-                continue;
-            }
-            // 8. Conflict: both changed differently
-            if (!isEqualCurrTar) {
-                hasConflict = true;
-                hasChange = true;
-
-                String currContent = currBlob != null ? currBlob.getContentAsString() : "";
-                String targetContent = targetBlob != null ? targetBlob.getContentAsString() : "";
-
-                String conflictContent = "<<<<<<< HEAD\n"
-                        + currContent
-                        + "=======\n"
-                        + targetContent
-                        + ">>>>>>>\n";
-
-                File conflictFile = join(CWD, fileName);
-                writeContents(conflictFile, conflictContent);
-                Blob conflictBlob = creBlob(conflictFile);
-                stage.put(fileName, conflictBlob.getId());
-            }
-        }
-
-        if (!hasChange) {
-            System.out.println("You have uncommitted changes.");
-            return;
-        }
-
-        // Create final merge commit with two parents
-        List<String> parents = new LinkedList<>();
-        parents.add(currCommit.getId());
-        parents.add(targetCommit.getId());
-        String mergeCommitMessage =
-                "Merged " + branchName + " into " + branches.getCurrBranchName() + ".";
-        Commit mergeCommit =
-                new Commit(mergeCommitMessage, stage.getBlobIdMap(), parents);
-        //mergeCommit.saveCommit();
-        branches.setHEADId(mergeCommit.getId());
-        branches.put(branches.getCurrBranchName(), mergeCommit.getId());
-        stage.update(mergeCommit);
-
-        if (hasConflict) {
-            System.out.println("Encountered a merge conflict.");
-        }
-    }
-    */
 
     /** Read an object (Commit or Blob) by id and print its content. */
     public static void readObj(String id) {
@@ -503,6 +262,137 @@ public class Repository {
 
 
 
+    /**
+     * Display repository status:
+     * Shows branches, staged files, removed files, modifications not staged, and untracked files.
+     */
+    public static void statusS() {
+        // === 1. Collect all relevant file names from CWD, stage, and current commit ===
+        Set<String> allFiles = collectAllFileNames();
+
+        // === 2. Analyze file statuses ===
+        RepoStatus repoStatus = analyzeFileStatus(allFiles);
+
+        // === 3. Print status sections ===
+        printBranchesSection();
+        printStatusSection("=== Staged Files ===", repoStatus.stagedFiles);
+        printStatusSection("=== Removed Files ===", repoStatus.removedFiles);
+        printStatusSection("=== Modifications Not Staged For Commit ===",
+                repoStatus.modifiedNotStaged);
+        printStatusSection("=== Untracked Files ===", repoStatus.untrackedFiles);
+    }
+
+    /**
+     * Collect all filenames that should be considered when computing repository status.
+     * Combines workspace files, files in stage area, and files in current commit.
+     */
+    private static Set<String> collectAllFileNames() {
+        Set<String> fileNames = new HashSet<>(stage.getFileNameSet());
+
+        List<String> cwdFiles = plainFilenamesIn(CWD);
+        if (cwdFiles != null) {
+            fileNames.addAll(cwdFiles);
+        }
+        fileNames.addAll(currCommit.getFileNameSet());
+        return fileNames;
+    }
+
+    /**
+     * Analyze each file to determine its category:
+     * staged, removed, modified-not-staged, or untracked.
+     */
+    private static RepoStatus analyzeFileStatus(Set<String> fileNameSet) {
+        List<String> staged = new LinkedList<>();
+        List<String> removed = new LinkedList<>();
+        List<String> modified = new LinkedList<>();
+        List<String> untracked = new LinkedList<>();
+
+        for (String fileName : fileNameSet) {
+            Blob stagedBlob = readBlob(stage.getBlobId(fileName));
+            Blob currBlob   = readBlob(currCommit.getBlobId(fileName));
+            File cwdFile    = join(CWD, fileName);
+            Blob cwdBlob    = cwdFile.exists() ? new Blob(cwdFile) : null;
+
+            // 1. File is staged for addition
+            if (!equalsBlob(stagedBlob, currBlob)
+                    && equalsBlob(stagedBlob, cwdBlob) && cwdBlob != null) {
+                staged.add(fileName);
+            }
+
+            // 2. File is marked for removal
+            if (currCommit.containFileName(fileName)
+                    && !stage.containFileName(fileName)) {
+                removed.add(fileName);
+            }
+
+            // 3. Modified but not staged
+            if (equalsBlob(stagedBlob, currBlob)
+                    && !equalsBlob(stagedBlob, cwdBlob)) {
+                if (currBlob != null && cwdBlob == null) {
+                    modified.add(fileName + " (deleted)");
+                } else if (stagedBlob != null && !equalsBlob(stagedBlob, cwdBlob)) {
+                    modified.add(fileName + " (modified)");
+                }
+            }
+
+            // 4. Untracked file (not in commit or stage)
+            if (!currCommit.containFileName(fileName)
+                    && !stage.containFileName(fileName)) {
+                untracked.add(fileName);
+            }
+        }
+
+        // Sort lists alphabetically for clean output
+        staged.sort(String::compareTo);
+        removed.sort(String::compareTo);
+        modified.sort(String::compareTo);
+        untracked.sort(String::compareTo);
+
+        return new RepoStatus(staged, removed, modified, untracked);
+    }
+
+    /**
+     * Print out the sections for branches.
+     */
+    private static void printBranchesSection() {
+        System.out.println("=== Branches ===");
+        System.out.println("*" + branches.getCurrBranchName());
+        for (String branch : branches.getBranchNames()) {
+            if (!branch.equals(branches.getCurrBranchName())) {
+                System.out.println(branch);
+            }
+        }
+        System.out.println();
+    }
+
+    /**
+     * Print a titled section with the provided list of file names.
+     */
+    private static void printStatusSection(String title, List<String> items) {
+        System.out.println(title);
+        for (String name : items) {
+            System.out.println(name);
+        }
+        System.out.println();
+    }
+
+    /**
+     * A helper class to store categorized file lists for status output.
+     */
+    private static class RepoStatus {
+        List<String> stagedFiles;
+        List<String> removedFiles;
+        List<String> modifiedNotStaged;
+        List<String> untrackedFiles;
+
+        RepoStatus(List<String> staged, List<String> removed,
+                   List<String> modified, List<String> untracked) {
+            this.stagedFiles = staged;
+            this.removedFiles = removed;
+            this.modifiedNotStaged = modified;
+            this.untrackedFiles = untracked;
+        }
+    }
 
 
 
@@ -668,7 +558,8 @@ public class Repository {
      * between split, current, and target commits.
      * Returns a MergeResult describing necessary actions.
      */
-    private static MergeResult mergeSingleFile(String fileName, Commit split, Commit curr, Commit target) {
+    private static MergeResult mergeSingleFile(String fileName,
+                                               Commit split, Commit curr, Commit target) {
         Blob splitBlob = readBlob(split.getBlobId(fileName));
         Blob currBlob = readBlob(curr.getBlobId(fileName));
         Blob targetBlob = readBlob(target.getBlobId(fileName));
@@ -803,6 +694,4 @@ public class Repository {
             this.hasChange = true;
         }
     }
-
-
 }

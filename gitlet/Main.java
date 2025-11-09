@@ -8,8 +8,6 @@ public class Main {
      *  <COMMAND> <OPERAND1> <OPERAND2> ... 
      */
     public static void main(String[] args) {
-        //Repository repository = new Repository();
-
         if (args.length == 0) {
             System.out.println("Please enter a command.");
             return;
@@ -42,8 +40,7 @@ public class Main {
                 Repository.reset(args[1]);
                 break;
             case "status":
-                Repository.status();
-                //Repository.saveStatusOutputToFile();
+                Repository.statusS();
                 break;
             case "log":
                 Repository.log();
@@ -83,6 +80,5 @@ public class Main {
             default:
                 System.out.println("No command with that name exists.");
         }
-
     }
 }

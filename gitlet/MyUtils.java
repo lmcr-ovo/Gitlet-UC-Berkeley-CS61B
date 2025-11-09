@@ -65,7 +65,8 @@ public class MyUtils {
                 if (f.getName().startsWith(prefix)) {
                     if (matched != null) {
                         // more than one file matches -> ambiguous
-                        System.out.println("Ambiguous short ID: multiple objects share prefix " + prefix);
+                        System.out.println("Ambiguous short ID: "
+                                + "multiple objects share prefix " + prefix);
                         return null;
                     }
                     matched = f;
