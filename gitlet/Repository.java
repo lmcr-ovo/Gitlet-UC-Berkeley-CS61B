@@ -248,20 +248,6 @@ public class Repository {
         System.out.println(readObject(STAGE_FILE, Stage.class));
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     /**
      * Display repository status:
      * Shows branches, staged files, removed files, modifications not staged, and untracked files.
@@ -393,29 +379,6 @@ public class Repository {
             this.untrackedFiles = untracked;
         }
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     /**
      * Merge the specified branch into the current branch.
